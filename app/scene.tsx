@@ -102,7 +102,57 @@ export const Scene=forwardRef<SceneHandle,Props>(function Scene({opened,message,
  ctx.restore();frame=requestAnimationFrame(draw);
  };frame=requestAnimationFrame(draw);return()=>cancelAnimationFrame(frame);
  },[]);
- function down(ev:React.PointerEvent<HTMLCanvasElement>){if(!props.current.interactive||props.current.opened||props.current.busy)return;const box=ev.currentTarget.getBoundingClientRect(),x=(ev.clientX-box.left)/box.width*520,y=(ev.clientY-box.top)/box.height*680;if(Math.abs(x-260)>65||y<350||y>585)return;ev.currentTarget.setPointerCapture(ev.pointerId);start.current=ev.clientY;props.current.onReadySound?.();}
- function move(ev:React.PointerEvent<HTMLCanvasElement>){if(start.current===null)return;const scale=680/ev.currentTarget.getBoundingClientRect().height;pull.current=Math.min(90,Math.max(0,(ev.clientY-start.current)*scale));if(pull.current>=78){start.current=null;props.current.onPull?.();}}
- return <canvas ref={canvas} className={`scene ${interactive?'touchable':''}`} aria-label={opened?message:'金色のくす玉と赤い紐'} onPointerDown={down} onPointerMove={move} onPointerUp={()=>{start.current=null}} onPointerCancel={()=>{start.current=null}}/>;
+ // Native, explicitly non-passive listeners let iOS cancel page panning before a pull starts.
+ function begin(clientX:number,clientY:number,el:HTMLCanvasElement){
+  const p=props.current;if(!p.interactive||p.opened||p.busy||start.current!==null)return false;
+  const box=el.getBoundingClientRect(),x=(clientX-box.left)/box.width*520,y=(clientY-box.top)/box.height*680;
+  if(Math.abs(x-260)>85||y<340||y>610)return false;
+  start.current=clientY;p.onReadySound?.();return true;
+ }
+ function drag(clientY:number,el:HTMLCanvasElement){
+  if(start.current===null)return;
+  const scale=680/el.getBoundingClientRect().height;
+  pull.current=Math.min(90,Math.max(0,(clientY-start.current)*scale));
+  if(pull.current>=78){start.current=null;props.current.onPull?.();}
+ }
+ useEffect(()=>{
+  const el=canvas.current;if(!el)return;
+  let finger:number|null=null;
+  const touchStart=(ev:TouchEvent)=>{
+   if(finger!==null)return;
+   const touch=ev.changedTouches[0];
+   if(touch&&begin(touch.clientX,touch.clientY,el)){
+    finger=touch.identifier;if(ev.cancelable)ev.preventDefault();
+   }
+  };
+  const touchMove=(ev:TouchEvent)=>{
+   if(finger===null)return;
+   // Keep blocking scroll until this finger lifts, including after the opening threshold.
+   if(ev.cancelable)ev.preventDefault();
+   const touch=Array.from(ev.changedTouches).find(t=>t.identifier===finger);
+   if(touch)drag(touch.clientY,el);
+  };
+  const touchEnd=(ev:TouchEvent)=>{
+   if(!Array.from(ev.changedTouches).some(t=>t.identifier===finger))return;
+   finger=null;start.current=null;
+  };
+  el.addEventListener('touchstart',touchStart,{passive:false});
+  el.addEventListener('touchmove',touchMove,{passive:false});
+  el.addEventListener('touchend',touchEnd);
+  el.addEventListener('touchcancel',touchEnd);
+  return()=>{
+   el.removeEventListener('touchstart',touchStart);el.removeEventListener('touchmove',touchMove);
+   el.removeEventListener('touchend',touchEnd);el.removeEventListener('touchcancel',touchEnd);
+   start.current=null;
+  };
+ },[]);
+ function down(ev:React.PointerEvent<HTMLCanvasElement>){
+  if(ev.pointerType==='touch'||!ev.isPrimary||ev.button!==0)return;
+  if(begin(ev.clientX,ev.clientY,ev.currentTarget)){
+   ev.preventDefault();ev.currentTarget.setPointerCapture(ev.pointerId);
+  }
+ }
+ function move(ev:React.PointerEvent<HTMLCanvasElement>){if(ev.pointerType!=='touch')drag(ev.clientY,ev.currentTarget);}
+ function end(ev:React.PointerEvent<HTMLCanvasElement>){if(ev.pointerType!=='touch')start.current=null;}
+ return <canvas ref={canvas} className={`scene ${interactive?'touchable':''}`} aria-label={opened?message:'金色のくす玉と赤い紐'} onPointerDown={down} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}/>;
 });
