@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {messageColumns,messageLength,messageError} from '../lib/message-layout.js';
+assert.deepEqual(messageColumns('お誕生日\nおめでとうございます'),[Array.from('お誕生日'),Array.from('おめでとうございます')]);
+assert.deepEqual(messageColumns('祝\n\n開店'),[['祝'],[],['開','店']]);
+assert.equal(messageLength('👨‍👩‍👧‍👦\nおめでとう🎊'),7);
+assert.equal(messageLength('あ'.repeat(18)+'\n'+'い'.repeat(18)),36);
+assert.equal(messageError('あ'.repeat(18)+'\n'+'い'.repeat(18)),'');
+assert.notEqual(messageError('あ'.repeat(37)),'');
+assert.notEqual(messageError('一\n二\n三\n四'),'');
+assert.equal(messageColumns('あ'.repeat(36)).length,3);
+assert.equal(messageColumns('あ'.repeat(35)+'\n祝')[0].length,35);
+console.log('PASS: explicit vertical column breaks, empty column, emoji counting, 36-character limit, three-column limit, automatic wrapping.');

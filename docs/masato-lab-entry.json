@@ -1,0 +1,14 @@
+{
+  "title": "KUSUDAMA",
+  "slug": "kusudama",
+  "description": "自分では割れない、誰かに贈るためのくす玉。メッセージを込めたURLを送り、受け取った人が赤い紐を引くと、紙吹雪とともに垂れ幕が現れます。一度きりの祝福を贈るブラウザアプリです。",
+  "image": "https://raw.githubusercontent.com/Masato-Nasu/KUSUDAMA/main/docs/opened.png",
+  "imageRatio": "4:3",
+  "imageFit": "contain",
+  "category": "art-concept",
+  "platform": "web",
+  "platforms": ["web"],
+  "appUrl": "https://kusudama.sunny-seed-0354.chatgpt.site",
+  "repoUrl": "https://github.com/Masato-Nasu/KUSUDAMA",
+  "tags": ["くす玉", "祝福", "PWA"]
+}
