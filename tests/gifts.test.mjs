@@ -1,21 +1,42 @@
 import {createRequire} from 'node:module';
 import {realpathSync} from 'node:fs';
 const {Miniflare}=createRequire(realpathSync('node_modules/wrangler/package.json'))('miniflare');
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 const layout=(await readFile('lib/message-layout.js','utf8')).replaceAll('export ','');
 const source=layout+'\n'+(await readFile('lib/gifts.js','utf8')).replace(/^import .*message-layout.js';\n/,'').replace('export async function','async function');
 const worker=new Miniflare({modules:true,script:source+'\nexport default {fetch:(r,e)=>handleGift(r,e.DB)};',d1Databases:{DB:'test'},compatibilityDate:'2026-01-01'});
 try{
  const db=await worker.getD1Database('DB');
- const migration=await readFile('drizzle/0000_woozy_puma.sql','utf8');await db.exec(migration.replaceAll('\n',' '));
+ const migrationFiles=(await readdir('drizzle')).filter(file=>file.endsWith('.sql')).sort();
+ for(const [index,file] of migrationFiles.entries()){
+ for(const sql of (await readFile('drizzle/'+file,'utf8')).split('--> statement-breakpoint'))await db.exec(sql.replaceAll('\n',' '));
+ if(index===0)await db.prepare('INSERT INTO gifts(id,message,recipient,status_key,owner,created_at) VALUES(?,?,?,?,?,?)').bind('f'.repeat(48),'以前に贈ったくす玉','d'.repeat(64),'e'.repeat(64),createHash('sha256').update('c'.repeat(48)).digest('hex'),1).run();
+ }
  const call=(path='',method='GET',key='',receipt='',body=null,cookie='')=>worker.dispatchFetch('https://test.local/api/gifts'+path,{method,headers:{Authorization:`Bearer ${key}`,'X-Open-Receipt':receipt,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ const legacySent=(await (await call('/sent','GET','','',null,'kusudama_owner='+'c'.repeat(48))).json()).gifts;assert.equal(legacySent[0].message,'以前に贈ったくす玉');assert.equal(legacySent[0].label,'');
  assert.equal((await call('','POST','','',{message:''})).status,400);
  assert.equal((await call('','POST','','',{message:'あ'.repeat(18)+'\n'+'い'.repeat(18)})).status,201);
  assert.equal((await call('','POST','','',{message:'あ'.repeat(37)})).status,400);
  assert.equal((await call('','POST','','',{message:'一\n二\n三\n四'})).status,400);
  const created=await call('','POST','','',{message:'お誕生日おめでとう'}),ownerCookie=created.headers.get('set-cookie').split(';')[0],gift=await created.json();assert.equal(created.status,201);
  const path='/'+gift.id;
+ assert.deepEqual((await (await call('/sent')).json()).gifts,[]);
+ let sent=(await (await call('/sent','GET','','',null,ownerCookie)).json()).gifts;
+ assert.equal(sent.length,1);assert.equal(sent[0].id,gift.id);assert.equal(sent[0].openedAt,null);
+ assert.deepEqual(Object.keys(sent[0]).sort(),['createdAt','id','label','message','openedAt'].sort());
+ assert.equal((await (await call(path+'/status','GET','','',null,ownerCookie)).json()).opened,false);
+ assert.equal((await call(path+'/status','GET')).status,403);
+ assert.equal((await call(path+'/label','POST',gift.key,'',{label:'他人の名前'})).status,403);
+ assert.equal((await call(path+'/label','POST','','',{label:'田中さんの誕生日'},ownerCookie)).status,200);
+ sent=(await (await call('/sent','GET','','',null,ownerCookie)).json()).gifts;
+ assert.equal(sent[0].label,'田中さんの誕生日');assert.equal(sent[0].message,'お誕生日おめでとう');
+ const another=await (await call('','POST','','',{message:'お誕生日おめでとう',label:'鈴木さんの誕生日'},ownerCookie)).json();
+ assert.notEqual(another.id,gift.id);
+ sent=(await (await call('/sent','GET','','',null,ownerCookie)).json()).gifts;
+ assert.equal(sent.length,2);assert.ok(sent.some(item=>item.label==='田中さんの誕生日'));assert.ok(sent.some(item=>item.label==='鈴木さんの誕生日'));
+ assert.equal((await call(path+'/label','POST','','',{label:'あ'.repeat(41)},ownerCookie)).status,400);
  assert.equal((await (await call(path,'GET',gift.key)).json()).state,'closed');
  assert.equal((await (await call(path+'/status','GET',gift.statusKey)).json()).opened,false);
  assert.equal((await call(path+'/open','POST',gift.key,'a'.repeat(48),null,ownerCookie)).status,403);
@@ -29,5 +50,7 @@ try{
  assert.equal((await call(path+'/open','POST',gift.key,winner)).status,200);
  assert.equal((await (await call(path+'/status','GET',gift.statusKey)).json()).opened,true);
  const snapshot=await db.prepare('SELECT opened_at FROM gifts WHERE id=?').bind(gift.id).first();await call(path+'/open','POST',gift.key,winner);assert.deepEqual(await db.prepare('SELECT opened_at FROM gifts WHERE id=?').bind(gift.id).first(),snapshot);
- console.log('PASS: create, non-consuming reads, sender block, secret isolation, atomic concurrent open, receipt recovery, idempotent retry, status.');
+ assert.equal((await (await call(path+'/status','GET','','',null,ownerCookie)).json()).opened,true);
+ const finalSent=(await (await call('/sent','GET','','',null,ownerCookie)).json()).gifts;assert.ok(finalSent.find(item=>item.id===gift.id).openedAt);
+ console.log('PASS: sender history survives new requests, label isolation, duplicate-message identity, owner-only status, create, non-consuming reads, sender block, secret isolation, atomic concurrent open, receipt recovery, idempotent retry, status.');
 }finally{await worker.dispose();}

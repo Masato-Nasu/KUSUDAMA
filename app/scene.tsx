@@ -1,6 +1,7 @@
 'use client';
 import {forwardRef,useEffect,useImperativeHandle,useRef} from 'react';
 import {messageColumns} from '../lib/message-layout.js';
+import {imageFilename} from '../lib/export-name.js';
 export type SceneHandle={save:()=>Promise<void>;capture:()=>string};
 type Props={opened:boolean;message:string;interactive?:boolean;busy?:boolean;restored?:boolean;onPull?:()=>void;onReadySound?:()=>void};
 const colors=['#bb263c','#d1aa3e','#387eaf','#dd7e9f','#497d59','#c8682d'];
@@ -10,9 +11,9 @@ export const Scene=forwardRef<SceneHandle,Props>(function Scene({opened,message,
  useEffect(()=>{if(opened){openedAt.current=performance.now()-((restored||window.matchMedia('(prefers-reduced-motion: reduce)').matches)?5000:0);}else{progress.current=0;openedAt.current=0;}},[opened,restored]);
  useImperativeHandle(ref,()=>({capture:()=>canvas.current?.toDataURL('image/png')||'',save:async()=>{
  const el=canvas.current;if(!el)return;const blob=await new Promise<Blob|null>(r=>el.toBlob(r,'image/png'));if(!blob)throw new Error('保存できませんでした');
- const file=new File([blob],'KUSUDAMA.png',{type:'image/png'});
+ const filename=imageFilename(),file=new File([blob],filename,{type:'image/png'});
  if(navigator.canShare?.({files:[file]})&&/iPhone|iPad|Android/.test(navigator.userAgent)){try{await navigator.share({files:[file],title:'KUSUDAMA'});return;}catch(e){if((e as Error).name==='AbortError')return;}}
- const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='KUSUDAMA.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
  }}));
  useEffect(()=>{
  const image=new Image();image.src='/gold-ball.png';image.onload=()=>{img.current=image};

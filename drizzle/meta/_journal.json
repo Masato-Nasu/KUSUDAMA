@@ -8,6 +8,13 @@
       "when": 1792037214109,
       "tag": "0000_woozy_puma",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792057562706,
+      "tag": "0001_demonic_blindfold",
+      "breakpoints": true
     }
   ]
 }
