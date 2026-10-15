@@ -4,6 +4,7 @@ import {Scene,SceneHandle} from './scene';
 import {SentGifts} from './sent-gifts';
 import {imageFilename} from '../lib/export-name.js';
 import {prepareOpeningAudio,playPreparedOpeningAudio} from './opening-sound';
+import {OpeningMedia} from './opening-media';
 import {messageLength,messageError} from '../lib/message-layout.js';
 type Gift={id:string;key:string;statusKey:string};
 type Mode='create'|'created'|'gift'|'status'|'sent';
@@ -11,7 +12,13 @@ type ReadResult={error?:string;opened:boolean;state:string;message:string};
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),v=>v.toString(16).padStart(2,'0')).join('');
 export default function Home(){
  const [mode,setMode]=useState<Mode>('create'),[text,setText]=useState(''),[gift,setGift]=useState<Gift|null>(null),[state,setState]=useState('loading'),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(''),[readySave,setReadySave]=useState(false),[restored,setRestored]=useState(false),[saveImage,setSaveImage]=useState(''),[senderLabel,setSenderLabel]=useState('');
- const preparedFile=useRef<File|null>(null),scene=useRef<SceneHandle>(null),context=useRef<AudioContext|null>(null),receipt=useRef(''),opening=useRef(false);
+ const preparedFile=useRef<File|null>(null),scene=useRef<SceneHandle>(null),context=useRef<AudioContext|null>(null),media=useRef<OpeningMedia|null>(null),receipt=useRef(''),opening=useRef(false);
+ useEffect(()=>{
+  if(/Line\//i.test(navigator.userAgent)&&(/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))){
+   media.current=new OpeningMedia();
+  }
+  return()=>{media.current?.dispose();media.current=null;};
+ },[]);
  useEffect(()=>{
  navigator.serviceWorker?.register('/sw.js').catch(()=>{});
  const params=new URLSearchParams(location.search),id=params.get('gift')||params.get('status'),fragment=location.hash.slice(1).split('~'),key=fragment[0],transferredReceipt=fragment[1];
@@ -30,8 +37,8 @@ export default function Home(){
  async function create(e:React.FormEvent){e.preventDefault();if(busy)return;const validation=messageError(text)||(Array.from(senderLabel).length>40?'名前・メモは40文字以内で入力してください。':'');if(validation){setError(validation);return;}setBusy(true);setError('');try{const res=await fetch('/api/gifts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,label:senderLabel})}),d=await res.json() as Gift & ReadResult;if(!res.ok)throw new Error(d.error);setGift(d);setMode('created');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  async function copy(value:string,which:string){try{await navigator.clipboard.writeText(value);setCopied(which);setTimeout(()=>setCopied(''),2500);}catch{setError('URLを長押ししてコピーしてください。');}}
  async function share(){if(navigator.share){try{await navigator.share({title:'あなたへ、くす玉を贈ります。',text:'赤い紐を引いて、開けてください。',url:giftURL});}catch(e){if((e as Error).name!=='AbortError')await copy(giftURL,'gift');}}else await copy(giftURL,'gift');}
- function prepareSound(){context.current=prepareOpeningAudio(context.current);}
- async function sound(){await playPreparedOpeningAudio(context.current);}
+ function prepareSound(){media.current?.prepare();context.current=prepareOpeningAudio(context.current);}
+ async function sound(){if(media.current){await media.current.play();return;}await playPreparedOpeningAudio(context.current);}
  async function open(){if(opening.current||state!=='closed'||!gift)return;opening.current=true;setBusy(true);setError('');try{const res=await fetch(`/api/gifts/${gift.id}/open`,{method:'POST',headers:{Authorization:`Bearer ${gift.key}`,'X-Open-Receipt':receipt.current}}),d=await res.json() as Gift & ReadResult;if(d.state==='used'){setState('used');return;}if(!res.ok)throw new Error(d.error);setMessage(d.message);setState('opened');void sound();setTimeout(()=>setReadySave(true),3600);}catch(e){setError((e as Error).message);}finally{setBusy(false);opening.current=false;}}
  async function save(){
  try{
