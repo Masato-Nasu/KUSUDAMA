@@ -135,6 +135,7 @@ export const Scene=forwardRef<SceneHandle,Props>(function Scene({opened,message,
   const touchEnd=(ev:TouchEvent)=>{
    if(!Array.from(ev.changedTouches).some(t=>t.identifier===finger))return;
    finger=null;start.current=null;
+   if(ev.type==='touchend')props.current.onReadySound?.();
   };
   el.addEventListener('touchstart',touchStart,{passive:false});
   el.addEventListener('touchmove',touchMove,{passive:false});

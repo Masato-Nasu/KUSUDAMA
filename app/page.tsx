@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Scene,SceneHandle} from './scene';
 import {SentGifts} from './sent-gifts';
 import {imageFilename} from '../lib/export-name.js';
-import {playOpeningSound} from './opening-sound';
+import {prepareOpeningAudio,playPreparedOpeningAudio} from './opening-sound';
 import {messageLength,messageError} from '../lib/message-layout.js';
 type Gift={id:string;key:string;statusKey:string};
 type Mode='create'|'created'|'gift'|'status'|'sent';
@@ -30,9 +30,9 @@ export default function Home(){
  async function create(e:React.FormEvent){e.preventDefault();if(busy)return;const validation=messageError(text)||(Array.from(senderLabel).length>40?'名前・メモは40文字以内で入力してください。':'');if(validation){setError(validation);return;}setBusy(true);setError('');try{const res=await fetch('/api/gifts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,label:senderLabel})}),d=await res.json() as Gift & ReadResult;if(!res.ok)throw new Error(d.error);setGift(d);setMode('created');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  async function copy(value:string,which:string){try{await navigator.clipboard.writeText(value);setCopied(which);setTimeout(()=>setCopied(''),2500);}catch{setError('URLを長押ししてコピーしてください。');}}
  async function share(){if(navigator.share){try{await navigator.share({title:'あなたへ、くす玉を贈ります。',text:'赤い紐を引いて、開けてください。',url:giftURL});}catch(e){if((e as Error).name!=='AbortError')await copy(giftURL,'gift');}}else await copy(giftURL,'gift');}
- function prepareSound(){try{if(!context.current)context.current=new AudioContext();void context.current.resume();}catch{}}
- function sound(){const a=context.current;if(!a)return;try{playOpeningSound(a)}catch{/* Audio must never interrupt a successful opening. */}}
- async function open(){if(opening.current||state!=='closed'||!gift)return;opening.current=true;setBusy(true);setError('');try{const res=await fetch(`/api/gifts/${gift.id}/open`,{method:'POST',headers:{Authorization:`Bearer ${gift.key}`,'X-Open-Receipt':receipt.current}}),d=await res.json() as Gift & ReadResult;if(d.state==='used'){setState('used');return;}if(!res.ok)throw new Error(d.error);setMessage(d.message);setState('opened');sound();setTimeout(()=>setReadySave(true),3600);}catch(e){setError((e as Error).message);}finally{setBusy(false);opening.current=false;}}
+ function prepareSound(){context.current=prepareOpeningAudio(context.current);}
+ async function sound(){await playPreparedOpeningAudio(context.current);}
+ async function open(){if(opening.current||state!=='closed'||!gift)return;opening.current=true;setBusy(true);setError('');try{const res=await fetch(`/api/gifts/${gift.id}/open`,{method:'POST',headers:{Authorization:`Bearer ${gift.key}`,'X-Open-Receipt':receipt.current}}),d=await res.json() as Gift & ReadResult;if(d.state==='used'){setState('used');return;}if(!res.ok)throw new Error(d.error);setMessage(d.message);setState('opened');void sound();setTimeout(()=>setReadySave(true),3600);}catch(e){setError((e as Error).message);}finally{setBusy(false);opening.current=false;}}
  async function save(){
  try{
  if(/Line\//i.test(navigator.userAgent)||/iPhone|iPad|Android/i.test(navigator.userAgent)){

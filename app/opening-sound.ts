@@ -1,3 +1,34 @@
+/** Prime audio synchronously inside a tap, pointer-down, or touch-end handler. */
+export function prepareOpeningAudio(previous:AudioContext|null):AudioContext|null{
+ try{
+  const session=(navigator as Navigator & {audioSession?:{type:string}}).audioSession;
+  if(session)session.type='playback';
+ }catch{/* Session selection is optional; older browsers still use Web Audio. */}
+ try{
+  const AudioConstructor=window.AudioContext||(window as Window & {webkitAudioContext?:typeof AudioContext}).webkitAudioContext;
+  if(!AudioConstructor)return null;
+  const context=previous&&previous.state!=='closed'?previous:new AudioConstructor();
+  // Starting a source during the gesture unlocks devices where resume alone is insufficient.
+  const source=context.createBufferSource();source.buffer=context.createBuffer(1,1,context.sampleRate);
+  source.connect(context.destination);source.onended=()=>source.disconnect();source.start(0);
+  void context.resume().catch(()=>{});
+  return context;
+ }catch{return null;}
+}
+
+/** Await resume before scheduling the effect; a blocked context must not silently count as playback. */
+export async function playPreparedOpeningAudio(context:AudioContext|null):Promise<boolean>{
+ if(!context||context.state==='closed')return false;
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ try{
+  if(context.state!=='running')await Promise.race([
+   context.resume(),new Promise<void>(resolve=>{timer=setTimeout(resolve,1200);})
+  ]);
+  if(context.state!=='running')return false;
+  playOpeningSound(context);return true;
+ }catch{return false;}finally{if(timer!==undefined)clearTimeout(timer);}
+}
+
 /** A small champagne-cork pop followed by a brief, soft release of air. */
 export function playOpeningSound(context:AudioContext){
  if(context.state==='closed')return;
@@ -16,7 +47,7 @@ export function playOpeningSound(context:AudioContext){
   const cork=(noise-softNoise)*.19*Math.exp(-105*t)*attack;
   const airAge=Math.max(0,t-.014),airAttack=Math.min(1,airAge/.009);
   const air=softNoise*.055*airAttack*Math.exp(-16*airAge);
-  samples[i]=(body+cork+air)*.75;
+  samples[i]=(body+cork+air)*1.1;
  }
  const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);source.onended=()=>source.disconnect();const now=context.currentTime;source.start(now);
  // Fine, irregular paper rustles spread out after the cork releases.
@@ -29,7 +60,7 @@ export function playOpeningSound(context:AudioContext){
    const noise=(random/4294967296)*2-1;low+=lowAlpha*(noise-low);high+=highAlpha*(noise-high);
    const flutter=.53+.24*Math.sin(2*Math.PI*9.3*t+channel*.8)+.18*Math.sin(2*Math.PI*14.7*t+1.2+channel*.4);
    const envelope=Math.min(1,t/.055)*Math.pow(Math.max(0,1-t/paperDuration),1.8);
-   data[i]=((high-low)*.11+(noise-high)*.014)*flutter*flutter*envelope;
+   data[i]=((high-low)*.22+(noise-high)*.028)*flutter*flutter*envelope;
   }
  }
  const rustle=context.createBufferSource();rustle.buffer=paper;rustle.connect(context.destination);rustle.onended=()=>rustle.disconnect();rustle.start(now+.045);
