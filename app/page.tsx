@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Scene,SceneHandle} from './scene';
 import {SentGifts} from './sent-gifts';
 import {imageFilename} from '../lib/export-name.js';
+import {playOpeningSound} from './opening-sound';
 import {messageLength,messageError} from '../lib/message-layout.js';
 type Gift={id:string;key:string;statusKey:string};
 type Mode='create'|'created'|'gift'|'status'|'sent';
@@ -30,7 +31,7 @@ export default function Home(){
  async function copy(value:string,which:string){try{await navigator.clipboard.writeText(value);setCopied(which);setTimeout(()=>setCopied(''),2500);}catch{setError('URLを長押ししてコピーしてください。');}}
  async function share(){if(navigator.share){try{await navigator.share({title:'あなたへ、くす玉を贈ります。',text:'赤い紐を引いて、開けてください。',url:giftURL});}catch(e){if((e as Error).name!=='AbortError')await copy(giftURL,'gift');}}else await copy(giftURL,'gift');}
  function prepareSound(){try{if(!context.current)context.current=new AudioContext();void context.current.resume();}catch{}}
- function sound(){const a=context.current;if(!a)return;const now=a.currentTime;[523.25,659.25,783.99,1046.5].forEach((freq,i)=>{const o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=freq;g.gain.setValueAtTime(0,now+i*.055);g.gain.linearRampToValueAtTime(.06,now+.025+i*.055);g.gain.exponentialRampToValueAtTime(.0001,now+1.8+i*.055);o.connect(g);g.connect(a.destination);o.start(now+i*.055);o.stop(now+2);});const n=a.createBuffer(1,a.sampleRate*.18,a.sampleRate),data=n.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*(1-i/data.length);const s=a.createBufferSource(),g=a.createGain();s.buffer=n;g.gain.value=.1;s.connect(g);g.connect(a.destination);s.start();}
+ function sound(){const a=context.current;if(!a)return;try{playOpeningSound(a)}catch{/* Audio must never interrupt a successful opening. */}}
  async function open(){if(opening.current||state!=='closed'||!gift)return;opening.current=true;setBusy(true);setError('');try{const res=await fetch(`/api/gifts/${gift.id}/open`,{method:'POST',headers:{Authorization:`Bearer ${gift.key}`,'X-Open-Receipt':receipt.current}}),d=await res.json() as Gift & ReadResult;if(d.state==='used'){setState('used');return;}if(!res.ok)throw new Error(d.error);setMessage(d.message);setState('opened');sound();setTimeout(()=>setReadySave(true),3600);}catch(e){setError((e as Error).message);}finally{setBusy(false);opening.current=false;}}
  async function save(){
  try{
