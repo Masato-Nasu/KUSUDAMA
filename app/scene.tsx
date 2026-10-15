@@ -103,11 +103,14 @@ export const Scene=forwardRef<SceneHandle,Props>(function Scene({opened,message,
  };frame=requestAnimationFrame(draw);return()=>cancelAnimationFrame(frame);
  },[]);
  // Native, explicitly non-passive listeners let iOS cancel page panning before a pull starts.
- function begin(clientX:number,clientY:number,el:HTMLCanvasElement){
+ function canBegin(clientX:number,clientY:number,el:HTMLCanvasElement){
   const p=props.current;if(!p.interactive||p.opened||p.busy||start.current!==null)return false;
   const box=el.getBoundingClientRect(),x=(clientX-box.left)/box.width*520,y=(clientY-box.top)/box.height*680;
-  if(Math.abs(x-260)>85||y<340||y>610)return false;
-  start.current=clientY;p.onReadySound?.();return true;
+  return Math.abs(x-260)<=85&&y>=340&&y<=610;
+ }
+ function begin(clientX:number,clientY:number,el:HTMLCanvasElement){
+  if(!canBegin(clientX,clientY,el))return false;
+  start.current=clientY;props.current.onReadySound?.();return true;
  }
  function drag(clientY:number,el:HTMLCanvasElement){
   if(start.current===null)return;
@@ -148,7 +151,13 @@ export const Scene=forwardRef<SceneHandle,Props>(function Scene({opened,message,
   };
  },[]);
  function down(ev:React.PointerEvent<HTMLCanvasElement>){
-  if(ev.pointerType==='touch'||!ev.isPrimary||ev.button!==0)return;
+  if(ev.pointerType==='touch'){
+   // Keep the original audio unlock on pointerdown, before touchstart cancels page panning.
+   // Touch movement is handled below by native listeners, so this must not start a second drag.
+   if(canBegin(ev.clientX,ev.clientY,ev.currentTarget))props.current.onReadySound?.();
+   return;
+  }
+  if(!ev.isPrimary||ev.button!==0)return;
   if(begin(ev.clientX,ev.clientY,ev.currentTarget)){
    ev.preventDefault();ev.currentTarget.setPointerCapture(ev.pointerId);
   }
