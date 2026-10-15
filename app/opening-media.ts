@@ -9,7 +9,7 @@ export class OpeningMedia{
  constructor(){
   this.audio=new Audio('/audio-silence.wav');this.audio.preload='auto';
   this.audio.setAttribute('playsinline','');
-  this.preload=new Audio('/opening.mp3');this.preload.preload='auto';
+  this.preload=new Audio('/opening.mp3?v=fanfare1');this.preload.preload='auto';
   this.audio.load();this.preload.load();
  }
  prepare(){
@@ -32,7 +32,7 @@ export class OpeningMedia{
   if(this.disposed||this.requested)return false;
   this.requested=true;
   try{
-   this.audio.pause();this.audio.src='/opening.mp3';this.audio.currentTime=0;
+   this.audio.pause();this.audio.src='/opening.mp3?v=fanfare1';this.audio.currentTime=0;
    await this.audio.play();this.playing=true;return !this.disposed;
   }catch{return false;}
  }

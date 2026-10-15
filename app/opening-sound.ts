@@ -29,25 +29,36 @@ export async function playPreparedOpeningAudio(context:AudioContext|null):Promis
  }catch{return false;}finally{if(timer!==undefined)clearTimeout(timer);}
 }
 
-/** A small champagne-cork pop followed by a brief, soft release of air. */
+/** A bright, three-note trumpet fanfare: two short calls and a held celebratory finish. */
 export function playOpeningSound(context:AudioContext){
  if(context.state==='closed')return;
- const sampleRate=context.sampleRate,duration=.42,buffer=context.createBuffer(1,Math.ceil(sampleRate*duration),sampleRate),samples=buffer.getChannelData(0);
- let seed=190717,softNoise=0;
- const smoothing=1-Math.exp(-2*Math.PI*2400/sampleRate);
- for(let i=0;i<samples.length;i++){
-  const t=i/sampleRate;
-  seed=(Math.imul(seed,1664525)+1013904223)>>>0;
-  const noise=(seed/4294967296)*2-1;
-  softNoise+=smoothing*(noise-softNoise);
-  const attack=Math.min(1,t/.0015);
-  // The bottle's short, descending hollow resonance supplies the rounded "pon".
-  const phase=2*Math.PI*(175*t+(220/70)*(1-Math.exp(-70*t)));
-  const body=(.24*Math.sin(phase)*Math.exp(-68*t)+.045*Math.sin(2*Math.PI*650*t)*Math.exp(-95*t))*attack;
-  const cork=(noise-softNoise)*.19*Math.exp(-105*t)*attack;
-  const airAge=Math.max(0,t-.014),airAttack=Math.min(1,airAge/.009);
-  const air=softNoise*.055*airAttack*Math.exp(-16*airAge);
-  samples[i]=(body+cork+air)*1.1;
+ const sampleRate=context.sampleRate,duration=1.4,buffer=context.createBuffer(2,Math.ceil(sampleRate*duration),sampleRate);
+ const notes=[{at:0,length:.12,hz:392},{at:.16,length:.12,hz:392},{at:.32,length:.75,hz:523.251}];
+ const dry=new Float32Array(buffer.length);
+ for(const note of notes){
+  let phase=0;
+  for(let i=0;i<Math.ceil(note.length*sampleRate);i++){
+   const t=i/sampleRate,index=Math.round(note.at*sampleRate)+i;
+   const attack=Math.min(1,t/.012),release=Math.min(1,(note.length-t)/.075);
+   const envelope=attack*release*(.8+.2*Math.exp(-t*22));
+   const vibrato=t>.16?1+.003*Math.sin(2*Math.PI*5.5*t):1;
+   phase+=2*Math.PI*note.hz*(1+.025*Math.exp(-t*60))*vibrato/sampleRate;
+   let brass=0;
+   for(let harmonic=1;harmonic<=9;harmonic++)brass+=Math.sin(phase*harmonic)*Math.exp(-harmonic*.26)/Math.pow(harmonic,.65);
+   // A small upper brass harmony gives the held note a ceremonial finish.
+   const harmony=note.at===.32?.035*(Math.sin(phase*1.25)+.65*Math.sin(phase*1.5)):0;
+   dry[index]=envelope*(brass*.25+harmony);
+  }
+ }
+ for(let channel=0;channel<2;channel++){
+  const data=buffer.getChannelData(channel);
+  for(let i=0;i<data.length;i++){
+   let sample=dry[i];
+   for(const [delay,gain]of [[.065+channel*.012,.14],[.125-channel*.009,.09],[.21,.045]]){
+    const past=i-Math.round(delay*sampleRate);if(past>=0)sample+=dry[past]*gain;
+   }
+   data[i]=sample;
+  }
  }
  const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);source.onended=()=>source.disconnect();const now=context.currentTime;source.start(now);
  // Fine, irregular paper rustles spread out after the cork releases.
